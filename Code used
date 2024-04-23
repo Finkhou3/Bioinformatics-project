@@ -1,0 +1,117 @@
+from Bio import SeqIO
+import random
+import subprocess
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+
+def cut_mutated_chromosome(chromosome_file, read_length, mutation_rate):
+    """
+    Randomly cuts up a mutated chromosome into reads of specified length.
+    """
+    mutated_reads = []
+    
+    with open(chromosome_file, "r") as f:
+        chromosome = next(SeqIO.parse(f, "fasta")).seq
+    
+    #Introduce mutations
+    mutated_chromosome = introduce_mutations(chromosome, mutation_rate)
+    
+    chromosome_length = len(mutated_chromosome)
+    num_reads = chromosome_length // read_length
+    
+    for i in range(num_reads):
+        start = i * read_length
+        end = start + read_length
+        read = mutated_chromosome[start:end]
+        mutated_reads.append(read)
+    
+    return mutated_reads
+
+def introduce_mutations(sequence, mutation_rate):
+    """
+    Introduces random point mutations to a sequence based on the mutation rate.
+    """
+    mutated_sequence = ""
+    
+    for base in sequence:
+        if random.random() < mutation_rate:
+            
+            mutated_base = random.choice(["A", "T", "G", "C"])
+            mutated_sequence += mutated_base
+        else:
+            mutated_sequence += base
+            
+    return mutated_sequence
+
+chromosome_file = "custom_genome.fasta"
+read_length = 500
+mutation_rate = 0.50 #mutation rate
+
+#Cut mutated chromosome into reads
+mutated_reads = cut_mutated_chromosome(chromosome_file, read_length, mutation_rate)
+
+def generate_random_reads(num_reads, read_length):
+    """
+    Generates random reads of specified length.
+    """
+    reads = []
+    for _ in range(num_reads):
+        read = "".join(random.choices("ATGC", k=read_length))
+        reads.append(read)
+    return reads
+
+#Code to generate random noise reads
+read_length = 500
+num_noise_reads = 100000
+noise_reads = generate_random_reads(num_noise_reads, read_length)
+
+def write_reads_to_FASTA(reads, output_file, mutated_indices=None):
+    """
+    Write reads to a FASTA file with a common mutated label.
+    """
+    with open(output_file, "w") as f:
+        for i, read in enumerate(reads):
+            if mutated_indices and i in mutated_indices:
+                f.write(f">mutated\n{read}\n")
+            else:
+                f.write(f">read_{i+1}\n{read}\n")
+
+all_reads = mutated_reads #Or noise to write to fasta to send to bowtie2
+
+
+#Write all reads to a single FASTA file 
+combined_fasta_file = "custom_mutation500_50.fasta"
+write_reads_to_FASTA(all_reads, combined_fasta_file, mutated_indices)
+
+#Code to analyze % alignmed, but made more time efficient by recording in excel
+def analyze_alignment_with_biopython(sam_file):
+    total_aligned = 0
+    correct_alignments = 0
+    false_positives = 0
+    
+    with open(sam_file, "r") as handle:
+        for line in handle:
+            if not line.startswith("@"):  #Skips heade
+                fields = line.strip().split("\t")
+                
+                total_aligned += 1
+                
+                if fields[2] != '*':  #Check if the read is aligned
+                    read_sequence = fields[9]  #Extract read sequence from the SAM file
+                    
+                    if ">mutated" in read_sequence:  #Check for ">mutated" label in the read sequence
+                        correct_alignments += 1
+                    else:
+                        false_positives += 1
+    
+    return total_aligned, correct_alignments, false_positives
+
+sam_file = "/Users/finkh/Downloads/output_1.sam"
+
+#Analyze the alignment with Biopython
+total_aligned, correct_alignments, false_positives = analyze_alignment_with_biopython(sam_file)
+
+print(f"Total Aligned Reads: {total_aligned}")
+print(f"Correct Alignments: {correct_alignments}")
+print(f"False Positives: {false_positives}")
+#Will not work. Needs work.
